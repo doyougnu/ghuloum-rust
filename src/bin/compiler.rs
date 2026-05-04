@@ -30,7 +30,7 @@ fn main() {
     // -1,
     // 0,
     // );
-    let allocator = Arena::<Expr>::new();
+    // let allocator = Arena::<Expr>::new();
     let expr = parser::parse(&contents).unwrap();
 
     println!("The program:\n{expr}");

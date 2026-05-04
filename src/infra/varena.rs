@@ -1,19 +1,21 @@
 use libc::{mmap, munmap, MAP_ANONYMOUS, MAP_FAILED, MAP_PRIVATE, PROT_READ, PROT_WRITE};
 use std::ptr;
 
-struct Arena<T> {
+pub struct Arena<T> {
     base_ptr: *mut T,  // the backing memory
     next_index: usize, // next mem address to write to
     capacity: usize,
 }
 
 impl<T> Arena<T> {
-    pub fn new(_base_ptr: *mut T, gb_to_reserve: usize) -> Self {
-        let capacity = size / std::mem::size_of::<T>();
+    // TODO: split out the mmap from the arena
+    // pub fn new(_base_ptr: *mut T, gb_to_reserve: usize) -> Self {
+    pub fn new(gb_to_reserve: usize) -> Self {
+        let capacity = gb_to_reserve / std::mem::size_of::<T>();
         let addr = unsafe {
             mmap(
                 ptr::null_mut(),
-                size,
+                gb_to_reserve,
                 PROT_READ | PROT_WRITE,      // we get read write permissions
                 MAP_PRIVATE | MAP_ANONYMOUS, // PRIVATE + ANONYMOUS to reserve
                 // the space then only get page

@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::infra::varena::Arena;
+
 pub struct CompilerContext1 {
     // atoms
     // pub pairs: Arena<Pair>,
@@ -20,8 +22,7 @@ impl CompilerContext1 {
     }
 }
 
-#[repr(u4)] // force the discriminant to be one nibble, TODO add more
-            // (Word64,32,16) for example
+// TODO add more (Word64,32,16) for example
 pub enum Fixnum {
     Integer(i64),
     Float(f64),
