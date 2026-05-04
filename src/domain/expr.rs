@@ -1,29 +1,33 @@
 use std::fmt;
 
-// START: implement pairs to get the hang of the recursion with indices then
-// implement an expr arena that will represent all lists by working on chunks of
-// data
-pub struct CompilerContext {
+pub struct CompilerContext1 {
     // atoms
-    pub pairs: Arena<Pair>, // TODO
-    pub symbols: Arena<u64>,
+    // pub pairs: Arena<Pair>,
+    pub symbols: Arena<u8>, // A "blob" arena for symbols
     pub strings: Arena<u8>, // A "blob" arena for raw bytes
-
-    // compound
-    pub lists: Arena<Vec<Expr>>,
-    // Reader elements
+    pub compounds: Arena<u8>,
+    pub fixnums: Arena<Fixnum>,
 }
 
-impl CompilerContext {
+impl CompilerContext1 {
     pub fn new() -> Self {
         Self {
-            pairs: Arena::new(4),   // 4GB
             symbols: Arena::new(2), // 2GB
-            strings: Arena::new(4), // 4GB
+            strings: Arena::new(4),
+            compounds: Arena::new(2),
+            fixnums: Arena::new(2),
         }
     }
 }
 
+#[repr(u4)] // force the discriminant to be one nibble, TODO add more
+            // (Word64,32,16) for example
+pub enum Fixnum {
+    Integer(i64),
+    Float(f64),
+}
+
+// What we are starting with for reference
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     // Atoms
