@@ -1,32 +1,32 @@
 use std::fmt;
 
-use crate::infra::varena::Arena;
+// use crate::infra::varena::Arena;
 
-pub struct CompilerContext1 {
-    // atoms
-    // pub pairs: Arena<Pair>,
-    pub symbols: Arena<u8>, // A "blob" arena for symbols
-    pub strings: Arena<u8>, // A "blob" arena for raw bytes
-    pub compounds: Arena<u8>,
-    pub fixnums: Arena<Fixnum>,
-}
+// pub struct CompilerContext1 {
+// atoms
+// pub pairs: Arena<Pair>,
+// pub symbols: Arena<u8>, // A "blob" arena for symbols
+// pub strings: Arena<u8>, // A "blob" arena for raw bytes
+// pub compounds: Arena<u8>,
+// pub fixnums: Arena<Fixnum>,
+// }
 
-impl CompilerContext1 {
-    pub fn new() -> Self {
-        Self {
-            symbols: Arena::new(2), // 2GB
-            strings: Arena::new(4),
-            compounds: Arena::new(2),
-            fixnums: Arena::new(2),
-        }
-    }
-}
+// impl CompilerContext1 {
+// pub fn new() -> Self {
+// Self {
+// symbols:Arena::new(2), // 2GB
+// strings: Arena::new(4),
+// compounds: Arena::new(2),
+// fixnums: Arena::new(2),
+// }
+// }
+// }
 
 // TODO add more (Word64,32,16) for example
-pub enum Fixnum {
-    Integer(i64),
-    Float(f64),
-}
+// pub enum Fixnum {
+// Integer(i64),
+// Float(f64),
+// }
 
 // What we are starting with for reference
 #[derive(Debug, Clone, PartialEq)]
