@@ -1,55 +1,105 @@
 use std::marker::PhantomData;
 
-/// We wrap raw indices in Idx to type the index with a phantom type
+/***************************** Pointer Types **********************************/
+/// We wrap raw indices in Ptr to type the index with a phantom type
 #[repr(transparent)]
-pub struct Idx<T> {
+pub struct Ptr<T> {
     pub idx: u32,
     _type: PhantomData<T>,
 }
 
-impl<T> Clone for Idx<T> {
+impl<T> Clone for Ptr<T> {
     fn clone(&self) -> Self {
         *self
     }
 }
-impl<T> Copy for Idx<T> {}
-impl<T> std::fmt::Debug for Idx<T> {
+impl<T> Copy for Ptr<T> {}
+impl<T> std::fmt::Debug for Ptr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Idx({})", self.idx)
+        write!(f, "Ptr({})", self.idx)
     }
 }
-impl<T> Idx<T> {
+impl<T> std::ops::BitAnd<u32> for Ptr<T> {
+    type Output = u32;
+    fn bitand(self, rhs: u32) -> Self::Output {
+        self.idx & rhs
+    }
+}
+impl<T> std::cmp::PartialEq for Ptr<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.idx == other.idx
+    }
+}
+
+impl<T> std::cmp::Eq for Ptr<T> {}
+
+impl<T> std::cmp::PartialOrd for Ptr<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.idx.partial_cmp(&other.idx)
+    }
+}
+
+// our address space defines a total order
+impl<T> std::cmp::Ord for Ptr<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.idx.cmp(&other.idx)
+    }
+}
+
+impl<T> Ptr<T> {
     pub fn new(idx: u32) -> Self {
         Self {
             idx,
             _type: PhantomData,
         }
     }
+    pub fn cast<NewT>(self) -> Ptr<NewT> {
+        Ptr {
+            idx: self.idx,
+            _type: PhantomData,
+        }
+    }
 }
 
-// same thing as a raw Idx but this time we need to keep a start and an offset
-// to slice for vectors
+/// A slice pointer type
 #[derive(Copy, Clone, Debug)]
-pub struct RangeIdx<T> {
-    pub start: u32,
-    pub length: u32,
-    _type: PhantomData<T>,
+pub struct Slice<Typ> {
+    pub start: usize,
+    pub length: usize,
+    _type: PhantomData<Typ>,
 }
 
-impl<T> RangeIdx<T> {
-    pub fn new(start: u32, length: u32) -> Self {
+impl<T> Into<usize> for Ptr<T> {
+    fn into(self) -> usize {
+        self.idx as usize
+    }
+}
+
+impl<Typ> Slice<Typ> {
+    pub fn new(start: usize, length: usize) -> Self {
         Self {
             start,
             length,
             _type: PhantomData,
         }
     }
+
+    // 0-cost casting of the phantom type. Needed to update the type tags in
+    // arenas on a range_alloc
+    pub fn cast<NewTyp>(self) -> Slice<NewTyp> {
+        Slice {
+            start: self.start,
+            length: self.length,
+            _type: PhantomData,
+        }
+    }
 }
 
+/****************************** The Arena **************************************/
 pub struct Arena<T> {
     base_ptr: *mut T,  // the backing memory
     next_index: usize, // next mem address to write to
-    capacity: usize,
+    capacity: usize,   // TODO: think about capacity
 }
 
 impl<T> Arena<T> {
@@ -64,15 +114,13 @@ impl<T> Arena<T> {
     }
 
     #[inline(always)]
-    pub fn get(&self, index: Idx<T>) -> &T {
-        // Bounds checking is just a comparison against next_index [cite: 22]
-        debug_assert!((index.idx as usize) < self.next_index);
-        unsafe { &*self.base_ptr.add(index.idx as usize) }
+    pub fn get(&self, index: Ptr<T>) -> &T {
+        unsafe { &*self.base_ptr.add(index.into()) }
     }
 
-    pub fn get_range(&self, range: RangeIdx<T>) -> &[T] {
-        let start = range.start as usize;
-        let len = range.length as usize;
+    pub fn get_range(&self, range: Slice<T>) -> &[T] {
+        let start = range.start;
+        let len = range.length;
 
         debug_assert!(start + len <= self.next_index);
         unsafe {
@@ -80,9 +128,8 @@ impl<T> Arena<T> {
             std::slice::from_raw_parts(start_ptr, len)
         }
     }
-
     /// Allocates a value in the arena and returns its index.
-    pub fn alloc(&mut self, value: T) -> Idx<T> {
+    pub fn alloc(&mut self, value: T) -> Ptr<T> {
         if self.next_index >= self.capacity {
             panic!("Arena capacity exceeded!");
         }
@@ -100,9 +147,31 @@ impl<T> Arena<T> {
             std::ptr::write(slot_ptr, value);
         }
 
-        // 4. Increment the bump pointer for the next allocation
         self.next_index += 1;
 
-        Idx::<T>::new(index)
+        Ptr::<T>::new(index)
+    }
+
+    pub fn alloc_range(&mut self, slice: &[T]) -> Slice<T> {
+        let len = slice.len();
+        if self.next_index + len >= self.capacity {
+            // TODO: need to check the entire range
+            panic!("alloc_range: Arena capacity exceeded");
+        }
+        let start = self.next_index;
+        unsafe {
+            let dest = self.base_ptr.add(start);
+            std::ptr::copy_nonoverlapping(slice.as_ptr(), dest, len);
+        }
+
+        self.next_index += len;
+
+        Slice::new(
+            start
+                .try_into()
+                .unwrap_or_else(|_| panic!("Index too large for Size type")),
+            len.try_into()
+                .unwrap_or_else(|_| panic!("Length too large for Size type")),
+        )
     }
 }

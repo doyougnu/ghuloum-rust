@@ -25,7 +25,6 @@
           buildInputs = [
             openssl
             pkg-config
-            rustup
             rust-bin.nightly.latest.default
           ];
 

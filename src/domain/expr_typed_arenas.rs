@@ -2,109 +2,210 @@
 // each arena for each constructor in our AST. The result is that we cannot
 // confuse indices for different types and still get all the benefits of the
 // arenas
-use libc::{mmap, MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE};
 
-use crate::infra::arena::{Arena, Idx, RangeIdx};
-use crate::infra::types::GB;
+use crate::infra::arena::{Ptr, Slice};
 
-pub enum Fixnum {
-    Integer(i64),
-    Float(f64), // TODO: add more
-}
-pub type FixnumIdx = Idx<Fixnum>;
+/****************************** Type level Tags ********************************/
+pub struct VariableTy;
+pub struct StringTy;
+pub struct SymbolTy;
+pub struct VectorTy;
+pub struct ExprTy;
+pub struct ListTy;
+pub struct NumTy;
+pub struct AnyTy;
 
-pub struct String {
-    // we store strings as raw bytes, so we need to define a slice
-    pub start: u32,
-    pub end: u32,
-}
+/***************************** Runtime Values **********************************/
+pub type VariableHdr = Slice<u8>;
+pub type StringHdr = Slice<u8>;
+pub type SymbolHdr = Slice<u8>;
+pub type VectorHdr = Slice<Expr>; // START: fix the vec types
 
-pub struct Symbol {
-    pub raw: u32,
-}
+pub struct Variable(Ptr<VariableHdr>);
+pub struct String(Ptr<StringHdr>);
+pub struct Symbol(Ptr<SymbolHdr>);
+pub struct Vector(Ptr<VectorHdr>);
+pub struct List(Ptr<Cons>);
+pub struct Word(Ptr<AnyTy>);
+pub struct Bool(Ptr<AnyTy>);
 
-pub struct Cons {
-    pub car: u32, // an index for the element
-    pub cdr: u32, // an index for the next cons or null
-}
-
-pub struct Vector {
-    pub start: u32,
-    pub end: u32,
-}
-
-pub type StringIdx = RangeIdx<String>;
-pub type SymbolIdx = Idx<Symbol>;
-pub type ListIdx = Idx<Cons>;
-pub type VectorIdx = RangeIdx<Vector>;
-
-type VarBlob = u8;
-type StrBlob = u8;
-type ExprBlob = u32; // 32-bit so that a chunk aligns with an index pointer.
-                     // Compound data types typically will store pointers so
-                     // this matches 1:1
-
-// Compiler Context manages all the mmap'd memory, it splits this memory up into
-// typed arenas and inserts a PROT_NONE between the boundaries to seg fault on
-// an overflow
-pub struct CompilerContext {
-    pub base: *mut u8, // the start of the entire OS block
-
-    pub variables: Arena<VarBlob>,
-    pub fixnums: Arena<Fixnum>,
-    pub strings: Arena<StrBlob>, // raw bytes for strings
-    pub lists: Arena<Cons>,
-    pub vectors: Arena<ExprBlob>,
-}
-
-// START: TODO: insert PROT_NONE
-
-impl CompilerContext {
-    pub fn initialize(gb_to_reserve: usize) -> Self {
-        let base: *mut u8 = unsafe {
-            mmap(
-                std::ptr::null_mut(),
-                gb_to_reserve,
-                PROT_READ | PROT_WRITE,      // we get read write permissions
-                MAP_PRIVATE | MAP_ANONYMOUS, // PRIVATE + ANONYMOUS to reserve
-                // the space then only get page
-                // faults on a write (so we reserve
-                // memory but don't write until
-                // needed)
-                -1,
-                0,
-            ) as *mut u8
-        };
-        assert!(!base.is_null());
-
-        unsafe {
-            let variables = Arena::<VarBlob>::new(base, 1 * GB);
-            let fixnums = Arena::<Fixnum>::new(base.add(1 * GB) as *mut Fixnum, 1 * GB);
-            let strings = Arena::<StrBlob>::new(base.add(2 * GB), 1 * GB);
-            let lists = Arena::<Cons>::new(base.add(3 * GB) as *mut Cons, 1 * GB);
-            let vectors = Arena::<ExprBlob>::new(base.add(4 * GB) as *mut ExprBlob, 2 * GB);
-            Self {
-                base,
-                variables,
-                fixnums,
-                strings,
-                lists,
-                vectors,
-            }
-        }
+impl Variable {
+    pub fn new(hdr: Ptr<VariableHdr>) -> Self {
+        debug_assert!(hdr.idx <= INDEX_MASK);
+        Self(Ptr::new((TAG_VARIABLE << TAG_SHIFT) | (hdr & INDEX_MASK)))
     }
 }
 
-// TODO: implement the destructor for the compiler context
-// impl<T> Drop for CompilerContext<T> {
-//     fn drop(&mut self) {
-//         unsafe {
-//             let addr = self.base_ptr as *mut libc::c_void;
-//             let size = self.capacity * std::mem::size_of::<T>();
-//             munmap(addr, size);
-//         }
-//     }
-// }
+impl String {
+    pub fn new(hdr: Ptr<StringHdr>) -> Self {
+        debug_assert!(hdr.idx <= INDEX_MASK);
+        Self(Ptr::new((TAG_STRING << TAG_SHIFT) | (hdr & INDEX_MASK)))
+    }
+}
+
+impl Symbol {
+    pub fn new(hdr: Ptr<SymbolHdr>) -> Self {
+        debug_assert!(hdr.idx <= INDEX_MASK);
+        Self(Ptr::new((TAG_SYMBOL << TAG_SHIFT) | (hdr & INDEX_MASK)))
+    }
+}
+
+impl Vector {
+    pub fn new(hdr: Ptr<VectorHdr>) -> Self {
+        debug_assert!(hdr.idx <= INDEX_MASK);
+        Self(Ptr::new((TAG_VECTOR << TAG_SHIFT) | (hdr & INDEX_MASK)))
+    }
+}
+
+impl List {
+    pub fn new(hdr: Ptr<Cons>) -> Self {
+        debug_assert!(hdr.idx <= INDEX_MASK);
+        Self(Ptr::new((TAG_CONS << TAG_SHIFT) | (hdr & INDEX_MASK)))
+    }
+}
+
+impl Word {
+    pub fn new(hdr: Ptr<AnyTy>) -> Self {
+        debug_assert!(hdr.idx <= INDEX_MASK);
+        Self(Ptr::new((TAG_FIXNUM << TAG_SHIFT) | (hdr & INDEX_MASK)))
+    }
+}
+
+impl Bool {
+    pub fn new(hdr: Ptr<AnyTy>) -> Self {
+        debug_assert!(hdr.idx <= INDEX_MASK);
+        Self(Ptr::new((TAG_BOOL << TAG_SHIFT) | (hdr & INDEX_MASK)))
+    }
+}
+
+pub struct Cons {
+    hd: Expr,
+    tl: Expr,
+}
+
+impl Cons {
+    pub fn new(hd: Expr, tl: Expr) -> Self {
+        Self { hd, tl }
+    }
+}
+
+/***************************** Pointers ****************************************/
+// 32 bits per value: [4-bit tag | 28-bit index into an arena]
+
+// that yields 2^28 possible indices into an arena, so if our address space is
+// defined as a 1GB arena then we have 1,073,741,824 total bits and unique
+// addresses. With a val being 4 bits that means we can express 268,435,456
+// indices. So a 29-bit address space gives us 513,870,912 indices which is at
+// least twice as much as we really need. Hence we tag the top 4 bits to give an
+// address space of 268,435,456 (~256MB). This forces a 1-1 mapping between
+// addresses and memory in the address space. That is a special case of storing
+// bools because the bool only needs 1-bit to be represented. Thus, if we were
+// to store a byte and map the entire address space we would need:
+// (total-num-of-addresses * sizeof(byte)) which would be 256MB * 8 which is
+// ~2GB
+pub type Expr = Ptr<AnyTy>;
+
+const TAG_SHIFT: u32 = 28;
+const INDEX_MASK: u32 = (1 << TAG_SHIFT) - 1;
+
+const TAG_FIXNUM: u32 = 0b0000;
+const TAG_CONS: u32 = 0b0001;
+const TAG_SYMBOL: u32 = 0b0010;
+const TAG_VARIABLE: u32 = 0b0011;
+const TAG_BOOL: u32 = 0b0100;
+const TAG_NIL: u32 = 0b0101;
+const TAG_VECTOR: u32 = 0b0110;
+const TAG_STRING: u32 = 0b0111;
+
+impl Expr {
+    pub fn tag(self) -> u32 {
+        self.idx >> TAG_SHIFT
+    }
+
+    pub fn index(self) -> u32 {
+        self.idx & INDEX_MASK
+    }
+
+    pub fn nil() -> Self {
+        Ptr::new(TAG_FIXNUM | 0)
+    }
+    // For now we'll pack the fixnum into the index so we don't have to store it
+    // TODO: detect and implement bignums
+    pub fn fixnum(self) -> Self {
+        debug_assert!(self.idx <= INDEX_MASK);
+        Ptr::new((TAG_FIXNUM << TAG_SHIFT) | (self & INDEX_MASK))
+    }
+
+    pub fn cons(self) -> Self {
+        debug_assert!(self.idx <= INDEX_MASK);
+        Ptr::new((TAG_CONS << TAG_SHIFT) | (self & INDEX_MASK))
+    }
+
+    pub fn symbol(self) -> Self {
+        debug_assert!(self.idx <= INDEX_MASK);
+        Ptr::new((TAG_SYMBOL << TAG_SHIFT) | (self & INDEX_MASK))
+    }
+
+    // TODO: build in bool so there is only ever 2
+    // and pack the bool in the pointer
+    pub fn bool(self) -> Self {
+        debug_assert!(self.idx <= INDEX_MASK);
+        Ptr::new((TAG_BOOL << TAG_SHIFT) | (self & INDEX_MASK))
+    }
+
+    // A vector stores an index into a vector header arena, then the header
+    // stores the pointers for the actual slice so we chase 2 pointers to get a
+    // nice contiguous set of vals for the vector
+    pub fn vector(self) -> Self {
+        debug_assert!(self.idx <= INDEX_MASK);
+        Ptr::new((TAG_SYMBOL << TAG_SHIFT) | (self & INDEX_MASK))
+    }
+
+    /****************************** projections ********************************/
+    // each of these functions will check the tag then lift that information
+    // into rusts type system
+    pub fn as_fixnum(&self) -> i32 {
+        debug_assert_eq!(self.tag(), TAG_FIXNUM);
+        self.index() as i32
+    }
+
+    pub fn as_list(&self) -> List {
+        debug_assert_eq!(self.tag(), TAG_CONS);
+        self.cast::<Cons>()
+    }
+
+    pub fn as_vector(&self) -> Vector {
+        debug_assert_eq!(self.tag(), TAG_VECTOR);
+        self.cast::<VectorHdr>()
+    }
+
+    pub fn as_string(&self) -> String {
+        debug_assert_eq!(self.tag(), TAG_STRING);
+        self.cast::<StringHdr>()
+    }
+
+    pub fn as_variable(&self) -> Variable {
+        debug_assert_eq!(self.tag(), TAG_VARIABLE);
+        self.cast::<VariableHdr>()
+    }
+
+    pub fn as_symbol(&self) -> Symbol {
+        debug_assert_eq!(self.tag(), TAG_SYMBOL);
+        self.cast::<SymbolHdr>()
+    }
+
+    pub fn as_bool(&self) -> bool {
+        // TODO: perhaps this project is wrong?
+        debug_assert_eq!(self.tag(), TAG_BOOL);
+        if self.index() > 0 {
+            true
+        } else {
+            false
+        }
+    }
+
+    // pub fn as_nil(&self)  // TODO: curious if this should be a thing
+}
 
 // a demonstration of how to represent data Variable = Variable String Ty
 // pub struct Variable {
@@ -114,8 +215,8 @@ impl CompilerContext {
 
 // just a demonstration of what built-in functions would look like
 // pub struct Function {
-// name: String,
-// args: Vector,
-// body: List,
+// name: StringPtr,
+// args: VectorPtr,
+// body: ListPtr,
 // return_type: TypeId
 // }

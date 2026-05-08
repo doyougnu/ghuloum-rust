@@ -2,6 +2,7 @@
 // Handles: atoms, symbols, numbers, booleans, strings, characters,
 //          lists, dotted pairs, vectors, and quote/quasiquote/unquote shorthands.
 
+use crate::application::context::Context;
 use crate::domain::expr::Expr;
 
 use std::fmt;
@@ -311,12 +312,12 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse a single top-level expression.
-    pub fn parse_expr(&mut self, ctx: CompilerContex) -> Result<Expr> {
+    pub fn parse_expr(&mut self, ctx: Context) -> Result<Expr> {
         let (tok, pos) = self.tokens.next()?;
         self.parse_from(tok, pos)
     }
 
-    fn parse_from(&mut self, ctx: CompilerContext, tok: Token, pos: usize) -> Result<Expr> {
+    fn parse_from(&mut self, ctx: Context, tok: Token, pos: usize) -> Result<Expr> {
         match tok {
             Token::EOF => Err(ParseError {
                 message: "unexpected end of input".into(),
@@ -549,7 +550,7 @@ fn parse_atom(s: &str, pos: usize) -> Result<Expr> {
 // ── Convenience top-level functions ───────────────────────────────────────────
 
 /// Parse a single expression from a string.
-pub fn parse(ctx: CompilerContext, input: &str) -> Result<Expr> {
+pub fn parse(ctx: Context, input: &str) -> Result<Expr> {
     Parser::new(input).parse_expr()
 }
 
