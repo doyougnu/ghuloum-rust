@@ -21,13 +21,13 @@ pub type StringHdr = Slice<u8>;
 pub type SymbolHdr = Slice<u8>;
 pub type VectorHdr = Slice<Expr>; // START: fix the vec types
 
-pub struct Variable(Ptr<VariableHdr>);
-pub struct String(Ptr<StringHdr>);
-pub struct Symbol(Ptr<SymbolHdr>);
-pub struct Vector(Ptr<VectorHdr>);
-pub struct List(Ptr<Cons>);
-pub struct Word(Ptr<AnyTy>);
-pub struct Bool(Ptr<AnyTy>);
+pub struct Variable(pub Ptr<VariableHdr>);
+pub struct String(pub Ptr<StringHdr>);
+pub struct Symbol(pub Ptr<SymbolHdr>);
+pub struct Vector(pub Ptr<VectorHdr>);
+pub struct List(pub Ptr<Cons>);
+pub struct Word(pub Ptr<AnyTy>);
+pub struct Bool(pub Ptr<AnyTy>);
 
 impl Variable {
     pub fn new(hdr: Ptr<VariableHdr>) -> Self {
@@ -80,11 +80,11 @@ impl Bool {
 
 pub struct Cons {
     hd: Expr,
-    tl: Expr,
+    tl: List,
 }
 
 impl Cons {
-    pub fn new(hd: Expr, tl: Expr) -> Self {
+    pub fn new(hd: Expr, tl: List) -> Self {
         Self { hd, tl }
     }
 }

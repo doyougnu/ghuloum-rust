@@ -149,37 +149,39 @@ impl Context {
         // foldr over the slice to yield: `val (val (val ...)))`
         match list {
             [head, tail @ ..] => {
-                let cdr = self.alloc_list(tail).cast::<ExprTy>();
-                // START: fix this up with new tag constructor scheme
-                self.lists
-                    .alloc(Cons::new(head.clone(), cdr.cast::<AnyTy>()))
+                let rest = self.alloc_list(tail);
+                List::new(self.lists.alloc(Cons::new(*head, rest)))
             }
-            [] => Expr::nil().cast::<Cons>(),
+            // for the nil case: Nil is tagged in the pointer, so we are
+            // constructing a pointer that doesn't actually point to anything by
+            // casting to a Cons. This satisfies the type system while keeping
+            // the invariants of the runtime intact
+            [] => List::new(Expr::nil().cast::<Cons>()),
         }
     }
 
     pub fn get_vector(&self, exp: Vector) -> &[Expr] {
-        let hdr = self.vector_hdr.get(exp);
+        let hdr = self.vector_hdr.get(exp.0);
         self.exprs.get_range(*hdr)
     }
 
     pub fn get_symbol(&self, sym: Symbol) -> &[u8] {
-        let hdr = self.symbol_hdr.get(sym);
+        let hdr = self.symbol_hdr.get(sym.0);
         self.symbols.get_range(*hdr)
     }
 
     pub fn get_string(&self, str: String) -> &[u8] {
-        let hdr = self.string_hdr.get(str);
+        let hdr = self.string_hdr.get(str.0);
         self.strings.get_range(*hdr)
     }
 
     pub fn get_variable(&self, v: Variable) -> &[u8] {
-        let hdr = self.variable_hdr.get(v);
+        let hdr = self.variable_hdr.get(v.0);
         self.variables.get_range(*hdr)
     }
 
     pub fn get_bool(&self, b: Bool) -> bool {
-        if b.index() > 0 {
+        if b.0.index() > 0 {
             true
         } else {
             false
@@ -191,7 +193,7 @@ impl Context {
     // be Ptr<NumTy> or Ptr<WordTy> but all the useful functions are defined on
     // Ptr<AnyTy>
     pub fn get_word(&self, n: Word) -> u32 {
-        n.index()
+        n.0.index()
     }
 }
 
