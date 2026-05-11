@@ -118,6 +118,7 @@ impl<T> Arena<T> {
         unsafe { &*self.base_ptr.add(index.into()) }
     }
 
+    #[inline(always)]
     pub fn get_range(&self, range: Slice<T>) -> &[T] {
         let start = range.start;
         let len = range.length;

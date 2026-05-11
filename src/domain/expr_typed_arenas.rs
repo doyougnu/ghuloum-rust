@@ -168,43 +168,6 @@ impl Expr {
         debug_assert_eq!(self.tag(), TAG_FIXNUM);
         self.index() as i32
     }
-
-    pub fn as_list(&self) -> List {
-        debug_assert_eq!(self.tag(), TAG_CONS);
-        self.cast::<Cons>()
-    }
-
-    pub fn as_vector(&self) -> Vector {
-        debug_assert_eq!(self.tag(), TAG_VECTOR);
-        self.cast::<VectorHdr>()
-    }
-
-    pub fn as_string(&self) -> String {
-        debug_assert_eq!(self.tag(), TAG_STRING);
-        self.cast::<StringHdr>()
-    }
-
-    pub fn as_variable(&self) -> Variable {
-        debug_assert_eq!(self.tag(), TAG_VARIABLE);
-        self.cast::<VariableHdr>()
-    }
-
-    pub fn as_symbol(&self) -> Symbol {
-        debug_assert_eq!(self.tag(), TAG_SYMBOL);
-        self.cast::<SymbolHdr>()
-    }
-
-    pub fn as_bool(&self) -> bool {
-        // TODO: perhaps this project is wrong?
-        debug_assert_eq!(self.tag(), TAG_BOOL);
-        if self.index() > 0 {
-            true
-        } else {
-            false
-        }
-    }
-
-    // pub fn as_nil(&self)  // TODO: curious if this should be a thing
 }
 
 // a demonstration of how to represent data Variable = Variable String Ty

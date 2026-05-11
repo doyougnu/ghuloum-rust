@@ -312,12 +312,12 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse a single top-level expression.
-    pub fn parse_expr(&mut self, ctx: Context) -> Result<Expr> {
+    pub fn parse_expr(&mut self, ctx: &mut Context) -> Result<Expr> {
         let (tok, pos) = self.tokens.next()?;
-        self.parse_from(tok, pos)
+        self.parse_from(ctx, tok, pos)
     }
 
-    fn parse_from(&mut self, ctx: Context, tok: Token, pos: usize) -> Result<Expr> {
+    fn parse_from(&mut self, ctx: &mut Context, tok: Token, pos: usize) -> Result<Expr> {
         match tok {
             Token::EOF => Err(ParseError {
                 message: "unexpected end of input".into(),
@@ -351,10 +351,10 @@ impl<'a> Parser<'a> {
                 } else {
                     Token::RBracket
                 };
-                self.parse_list(close, pos)
+                self.parse_list(close, pos, ctx)
             }
 
-            Token::HashLParen => self.parse_vector(pos),
+            Token::HashLParen => self.parse_vector(ctx, pos),
 
             Token::RParen | Token::RBracket => Err(ParseError {
                 message: "unexpected closing delimiter".into(),
@@ -369,7 +369,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse a list (or dotted pair) body after the opening paren.
-    fn parse_list(&mut self, close: Token, open_pos: usize) -> Result<Expr> {
+    fn parse_list(&mut self, ctx: &mut Context, close: Token, open_pos: usize) -> Result<List> {
         let mut items: Vec<Expr> = Vec::new();
 
         loop {
@@ -402,7 +402,7 @@ impl<'a> Parser<'a> {
                         position: pos,
                     });
                 }
-                let tail = self.parse_expr()?;
+                let tail = self.parse_expr(ctx)?;
                 // expect closing delimiter
                 let (next_tok, next_pos) = self.tokens.next()?;
                 if next_tok != close {
@@ -418,13 +418,13 @@ impl<'a> Parser<'a> {
             }
 
             // regular element
-            let e = self.parse_expr()?;
+            let e = self.parse_expr(ctx)?;
             items.push(e);
         }
     }
 
     /// Parse a vector literal body after #(.
-    fn parse_vector(&mut self, open_pos: usize) -> Result<Expr> {
+    fn parse_vector(&mut self, ctx: &mut Context, open_pos: usize) -> Result<Expr> {
         let mut items: Vec<Expr> = Vec::new();
         loop {
             let (tok, _pos) = self.tokens.peek()?.clone();
@@ -439,20 +439,20 @@ impl<'a> Parser<'a> {
                         position: open_pos,
                     });
                 }
-                _ => items.push(self.parse_expr()?),
+                _ => items.push(self.parse_expr(ctx)?),
             }
         }
     }
 
-    /// Parse all expressions until EOF, returning a Vec.
-    pub fn parse_all(&mut self) -> Result<Vec<Expr>> {
-        let mut exprs = Vec::new();
+    /// Parse all expressions until EOF, a scheme program is a list
+    pub fn parse_all(&mut self, ctx: &mut Context) -> Result<Vector> {
         loop {
             let (tok, _pos) = self.tokens.peek()?.clone();
             if tok == Token::EOF {
                 break;
             }
-            exprs.push(self.parse_expr()?);
+
+            self.parse_expr(ctx)?;
         }
         Ok(exprs)
     }
@@ -550,12 +550,12 @@ fn parse_atom(s: &str, pos: usize) -> Result<Expr> {
 // ── Convenience top-level functions ───────────────────────────────────────────
 
 /// Parse a single expression from a string.
-pub fn parse(ctx: Context, input: &str) -> Result<Expr> {
-    Parser::new(input).parse_expr()
+pub fn parse(ctx: &mut Context, input: &str) -> Result<Expr> {
+    Parser::new(input).parse_expr(ctx)
 }
 
 /// Parse all expressions from a string (e.g. a whole source file).
-pub fn parse_all(input: &str) -> Result<Vec<Expr>> {
+pub fn parse_all(input: &str) -> Result<Expr> {
     Parser::new(input).parse_all()
 }
 
