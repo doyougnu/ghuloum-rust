@@ -3,7 +3,8 @@
 //          lists, dotted pairs, vectors, and quote/quasiquote/unquote shorthands.
 
 use crate::application::context::Context;
-use crate::domain::expr::Expr;
+// use crate::domain::expr::Expr;
+use crate::domain::expr_typed_arenas::*;
 
 use std::fmt;
 use std::iter::Peekable;
@@ -326,7 +327,7 @@ impl<'a> Parser<'a> {
 
             Token::Atom(s) => Ok(parse_atom(&s, pos)?),
 
-            Token::StringLit(s) => Ok(Expr::Str(s)),
+            Token::StringLit(s) => Ok(ctx.alloc_string(s).into()),
 
             Token::Quote => {
                 let e = self.parse_expr(ctx)?;
@@ -351,7 +352,7 @@ impl<'a> Parser<'a> {
                 } else {
                     Token::RBracket
                 };
-                self.parse_list(close, pos, ctx)
+                let lst = self.parse_list(ctx, close, pos);
             }
 
             Token::HashLParen => self.parse_vector(ctx, pos),
@@ -382,9 +383,10 @@ impl<'a> Parser<'a> {
             if tok == close {
                 self.tokens.next()?; // consume closing delimiter
                 if items.is_empty() {
-                    return Ok(Expr::Nil);
+                    // then we have an empty list
+                    return Ok(List::nil());
                 }
-                return Ok(Expr::List(items));
+                return Ok(ctx.alloc_list(items.as_slice()));
             }
 
             if tok == Token::EOF {
@@ -431,7 +433,7 @@ impl<'a> Parser<'a> {
             match tok {
                 Token::RParen => {
                     self.tokens.next()?;
-                    return Ok(Expr::Vector(items));
+                    return Ok(Expr::nil());
                 }
                 Token::EOF => {
                     return Err(ParseError {

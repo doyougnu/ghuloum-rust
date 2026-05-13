@@ -19,15 +19,42 @@ pub struct AnyTy;
 pub type VariableHdr = Slice<u8>;
 pub type StringHdr = Slice<u8>;
 pub type SymbolHdr = Slice<u8>;
-pub type VectorHdr = Slice<Expr>; // START: fix the vec types
+pub type VectorHdr = Slice<Expr>;
 
+#[derive(Clone, Copy)]
 pub struct Variable(pub Ptr<VariableHdr>);
-pub struct String(pub Ptr<StringHdr>);
+
+#[derive(Clone, Copy)]
+pub struct SString(pub Ptr<StringHdr>);
+
+#[derive(Clone, Copy)]
 pub struct Symbol(pub Ptr<SymbolHdr>);
+
+#[derive(Clone, Copy)]
 pub struct Vector(pub Ptr<VectorHdr>);
+
+#[derive(Clone, Copy)]
 pub struct List(pub Ptr<Cons>);
+
+#[derive(Clone, Copy)]
 pub struct Word(pub Ptr<AnyTy>);
+
+#[derive(Clone, Copy)]
 pub struct Bool(pub Ptr<AnyTy>);
+
+#[derive(Clone, Copy)]
+pub struct Quote(pub Ptr<AnyTy>);
+
+#[derive(Clone, Copy)]
+pub struct QuasiQuote(pub Ptr<AnyTy>);
+
+#[derive(Clone, Copy)]
+pub struct Unquote(pub Ptr<AnyTy>);
+
+#[derive(Clone, Copy)]
+pub struct UnquoteSplicing(pub Ptr<AnyTy>);
+
+// START: impl new and as_ functions for quote and friends
 
 impl Variable {
     pub fn new(hdr: Ptr<VariableHdr>) -> Self {
@@ -36,7 +63,7 @@ impl Variable {
     }
 }
 
-impl String {
+impl SString {
     pub fn new(hdr: Ptr<StringHdr>) -> Self {
         debug_assert!(hdr.idx <= INDEX_MASK);
         Self(Ptr::new((TAG_STRING << TAG_SHIFT) | (hdr & INDEX_MASK)))
@@ -62,6 +89,13 @@ impl List {
         debug_assert!(hdr.idx <= INDEX_MASK);
         Self(Ptr::new((TAG_CONS << TAG_SHIFT) | (hdr & INDEX_MASK)))
     }
+    pub fn nil() -> Self {
+        Self(Ptr::new(TAG_NIL << TAG_SHIFT))
+    }
+
+    pub fn is_nil(&self) -> bool {
+        return (self.0.idx >> TAG_SHIFT) == TAG_NIL;
+    }
 }
 
 impl Word {
@@ -78,13 +112,14 @@ impl Bool {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Cons {
-    hd: Expr,
-    tl: List,
+    pub hd: Expr,
+    pub tl: Expr,
 }
 
 impl Cons {
-    pub fn new(hd: Expr, tl: List) -> Self {
+    pub fn new(hd: Expr, tl: Expr) -> Self {
         Self { hd, tl }
     }
 }
@@ -117,48 +152,74 @@ const TAG_NIL: u32 = 0b0101;
 const TAG_VECTOR: u32 = 0b0110;
 const TAG_STRING: u32 = 0b0111;
 
+// We define From to lose type information. This has to happen in the parser for
+// example. But the benefit is that the parser functions like parse_string will
+// be type safe while we can still write the recursive decent parser like we
+// normally would since the pointers will still be tagged. Then we can match on
+// the tag to reconstruct the type when needed.
+impl From<SString> for Expr {
+    fn from(s: SString) -> Self {
+        debug_assert!((s.0.idx >> TAG_SHIFT) == TAG_STRING);
+        Ptr::new(s.0.idx)
+    }
+}
+
+impl From<Variable> for Expr {
+    fn from(v: Variable) -> Self {
+        debug_assert!((v.0.idx >> TAG_SHIFT) == TAG_VARIABLE);
+        Ptr::new(v.0.idx)
+    }
+}
+
+impl From<Symbol> for Expr {
+    fn from(s: Symbol) -> Self {
+        debug_assert!((s.0.idx >> TAG_SHIFT) == TAG_SYMBOL);
+        Ptr::new(s.0.idx)
+    }
+}
+
+impl From<Vector> for Expr {
+    fn from(v: Vector) -> Self {
+        debug_assert!((v.0.idx >> TAG_SHIFT) == TAG_VECTOR);
+        Ptr::new(v.0.idx)
+    }
+}
+
+impl From<List> for Expr {
+    fn from(l: List) -> Self {
+        debug_assert!((l.0.idx >> TAG_SHIFT) == TAG_CONS);
+        Ptr::new(l.0.idx)
+    }
+}
+
+impl From<Bool> for Expr {
+    fn from(b: Bool) -> Self {
+        debug_assert!((b.0.idx >> TAG_SHIFT) == TAG_BOOL);
+        Ptr::new(b.0.idx)
+    }
+}
+
+impl From<Word> for Expr {
+    fn from(w: Word) -> Self {
+        debug_assert!((w.0.idx >> TAG_SHIFT) == TAG_FIXNUM);
+        Ptr::new(w.0.idx)
+    }
+}
+
 impl Expr {
+    #[inline(always)]
     pub fn tag(self) -> u32 {
         self.idx >> TAG_SHIFT
     }
 
+    #[inline(always)]
     pub fn index(self) -> u32 {
         self.idx & INDEX_MASK
     }
 
+    // TODO: remove?
     pub fn nil() -> Self {
         Ptr::new(TAG_FIXNUM | 0)
-    }
-    // For now we'll pack the fixnum into the index so we don't have to store it
-    // TODO: detect and implement bignums
-    pub fn fixnum(self) -> Self {
-        debug_assert!(self.idx <= INDEX_MASK);
-        Ptr::new((TAG_FIXNUM << TAG_SHIFT) | (self & INDEX_MASK))
-    }
-
-    pub fn cons(self) -> Self {
-        debug_assert!(self.idx <= INDEX_MASK);
-        Ptr::new((TAG_CONS << TAG_SHIFT) | (self & INDEX_MASK))
-    }
-
-    pub fn symbol(self) -> Self {
-        debug_assert!(self.idx <= INDEX_MASK);
-        Ptr::new((TAG_SYMBOL << TAG_SHIFT) | (self & INDEX_MASK))
-    }
-
-    // TODO: build in bool so there is only ever 2
-    // and pack the bool in the pointer
-    pub fn bool(self) -> Self {
-        debug_assert!(self.idx <= INDEX_MASK);
-        Ptr::new((TAG_BOOL << TAG_SHIFT) | (self & INDEX_MASK))
-    }
-
-    // A vector stores an index into a vector header arena, then the header
-    // stores the pointers for the actual slice so we chase 2 pointers to get a
-    // nice contiguous set of vals for the vector
-    pub fn vector(self) -> Self {
-        debug_assert!(self.idx <= INDEX_MASK);
-        Ptr::new((TAG_SYMBOL << TAG_SHIFT) | (self & INDEX_MASK))
     }
 
     /****************************** projections ********************************/
@@ -167,6 +228,36 @@ impl Expr {
     pub fn as_fixnum(&self) -> i32 {
         debug_assert_eq!(self.tag(), TAG_FIXNUM);
         self.index() as i32
+    }
+
+    pub fn as_vector(self) -> Vector {
+        debug_assert_eq!(self.tag(), TAG_VECTOR);
+        Vector(self.cast::<VectorHdr>())
+    }
+
+    pub fn as_list(self) -> List {
+        debug_assert_eq!(self.tag(), TAG_CONS);
+        List(self.cast::<Cons>())
+    }
+
+    pub fn as_variable(self) -> Variable {
+        debug_assert_eq!(self.tag(), TAG_VARIABLE);
+        Variable(self.cast::<VariableHdr>())
+    }
+
+    pub fn as_symbol(self) -> Symbol {
+        debug_assert_eq!(self.tag(), TAG_SYMBOL);
+        Symbol(self.cast::<SymbolHdr>())
+    }
+
+    pub fn as_string(self) -> SString {
+        debug_assert_eq!(self.tag(), TAG_STRING);
+        SString(self.cast::<StringHdr>())
+    }
+
+    pub fn as_bool(self) -> Bool {
+        debug_assert_eq!(self.tag(), TAG_BOOL);
+        Bool(self)
     }
 }
 

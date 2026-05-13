@@ -138,9 +138,9 @@ impl Context {
         Symbol::new(self.symbol_hdr.alloc(sym_hdr))
     }
 
-    pub fn alloc_string(&mut self, str: std::string::String) -> String {
+    pub fn alloc_string(&mut self, str: std::string::String) -> SString {
         let str_hdr = self.strings.alloc_range(str.as_bytes());
-        String::new(self.string_hdr.alloc(str_hdr))
+        SString::new(self.string_hdr.alloc(str_hdr))
     }
 
     pub fn alloc_list(&mut self, list: &[Expr]) -> List {
@@ -150,7 +150,8 @@ impl Context {
         match list {
             [head, tail @ ..] => {
                 let rest = self.alloc_list(tail);
-                List::new(self.lists.alloc(Cons::new(*head, rest)))
+                // TODO: Ick but maybe we can type the list correctly at some point?
+                List::new(self.lists.alloc(Cons::new(*head, rest.0.cast::<AnyTy>())))
             }
             // for the nil case: Nil is tagged in the pointer, so we are
             // constructing a pointer that doesn't actually point to anything by
@@ -165,12 +166,27 @@ impl Context {
         self.exprs.get_range(*hdr)
     }
 
+    pub fn get_list(&self, lst: List) -> Option<&Cons> {
+        // let mut ptr: List = lst;
+        // let mut results: Vec<Expr>; // unfortunately need to use a vec
+        // while !ptr.is_nil() {
+        // let cons = self.lists.get(ptr.0);
+        // results.push(cons.hd.clone());
+        // ptr = cons.tl.cast::<Cons>();
+        // }
+        if lst.is_nil() {
+            return None;
+        } else {
+            return Some(self.lists.get(lst.0));
+        }
+    }
+
     pub fn get_symbol(&self, sym: Symbol) -> &[u8] {
         let hdr = self.symbol_hdr.get(sym.0);
         self.symbols.get_range(*hdr)
     }
 
-    pub fn get_string(&self, str: String) -> &[u8] {
+    pub fn get_string(&self, str: SString) -> &[u8] {
         let hdr = self.string_hdr.get(str.0);
         self.strings.get_range(*hdr)
     }
